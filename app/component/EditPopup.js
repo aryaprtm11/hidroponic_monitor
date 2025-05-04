@@ -14,7 +14,7 @@ const EditPopup = ({
     return (
         <div className="fixed inset-0 backdrop-blur-sm bg-white/30 flex items-center justify-center z-50">
             <div className="bg-white rounded-lg p-6 w-80 max-w-md shadow-lg">
-                <h2 className="text-xl font-bold mb-4">{title}</h2>
+                <h2 className="text-[#B5E29B] text-xl font-bold mb-4">{title}</h2>
                 <div className="mb-4">
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                         {fieldLabel}
@@ -23,7 +23,7 @@ const EditPopup = ({
                         type="text"
                         value={value}
                         onChange={onChange}
-                        className="w-full p-2 border border-gray-300 rounded"
+                        className="text-black w-full p-2 border border-gray-300 rounded"
                         autoFocus
                     />
                 </div>
