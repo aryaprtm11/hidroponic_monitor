@@ -1,103 +1,276 @@
-import Image from "next/image";
+"use client";
+
+import { useState, useEffect } from "react";
+import {
+  SunIcon,
+  BeakerIcon,
+  LightBulbIcon,
+} from "@heroicons/react/24/solid";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faSeedling, faWater } from "@fortawesome/free-solid-svg-icons";
+import StatusCard from "./component/card";
+import ErrorBanner from "./component/ErrorBanner";
+import EditPopup from "./component/EditPopup";
+import ToastNotification, { showToast } from "./component/ToastNotification";
+import { getLatestStatus, updateGrowlightStatus, updateGrowthValue } from "./component/firebaseService";
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              app/page.js
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [data, setData] = useState({
+    lux: 0,
+    tinggi_air: 0,
+    pertumbuhan: 0,
+  });
+  const [connectionError, setConnectionError] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [currentDocId, setCurrentDocId] = useState("");
+  const [growlightStatus, setGrowlightStatus] = useState(false);
+  const [peristalticStatus, setPeristalticStatus] = useState(false);
+  
+  // State untuk popup edit pertumbuhan
+  const [showModal, setShowModal] = useState(false);
+  const [editValue, setEditValue] = useState('');
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  useEffect(() => {
+    // Cek wifi
+    if (!navigator.onLine) {
+      setConnectionError("Koneksi internet terputus. Silakan periksa koneksi Anda.");
+      setIsLoading(false);
+      return;
+    }
+
+    // Buat listener
+    const unsubscribe = getLatestStatus(
+      (docId, latestData) => {
+        console.log("Data terbaru diterima:", latestData);
+        
+        if (latestData.pertumbuhan === undefined || latestData.pertumbuhan === null) {
+          latestData.pertumbuhan = 0;
+        }
+        
+        setCurrentDocId(docId);
+        setData(latestData);
+        setConnectionError(null);
+        
+        // Untuk nentuin status growlight berdasarkan lux
+        if (typeof latestData.lux === "number") {
+          const shouldBeOn = latestData.lux < 6000;
+          const manualOverride = latestData.manual_growlight;
+          
+          // Untuk switch manual
+          if (manualOverride !== undefined) {
+            setGrowlightStatus(manualOverride);
+          } else {
+            setGrowlightStatus(shouldBeOn);
+          }
+        }
+        
+        // Cek ketinggian air
+        if (typeof latestData.tinggi_air === "number") {
+          const shouldActivatePeristaltic = latestData.tinggi_air < 8;
+          
+          // Jika status peristaltic berubah, tampilkan notifikasi toastify
+          if (shouldActivatePeristaltic !== peristalticStatus) {
+            if (shouldActivatePeristaltic) {
+              showToast.info("Pipa peristaltik dihidupkan karena ketinggian air kurang dari 8 cm");
+            } else {
+              showToast.info("Pipa peristaltik dimatikan");
+            }
+            setPeristalticStatus(shouldActivatePeristaltic);
+          }
+        }
+        
+        setIsLoading(false);
+      },
+      (error) => {
+        console.error("Error mendapatkan data:", error);
+        setConnectionError(error);
+        setIsLoading(false);
+      }
+    );
+
+    return () => {
+      console.log("Unsubscribing from Firestore listener");
+      unsubscribe();
+    };
+  }, []); 
+
+  // Logika status cahaya
+  let statusCahaya = isLoading ? "Memuat..." : "Data tidak tersedia";
+
+  if (typeof data.lux === "number") {
+    if (data.lux < 6000) {
+      statusCahaya = "Cahaya Matahari Tidak Mencukupi";
+    } else {
+      statusCahaya = "Cahaya Matahari Cukup";
+    }
+  }
+
+  // Fungsi untuk toggle status growlight
+  const toggleGrowlight = async (event) => {
+    try {
+      if (!currentDocId) {
+        setConnectionError("Tidak dapat mengubah status, ID dokumen tidak tersedia.");
+        return;
+      }
+
+      const newStatus = event.target.checked;
+
+      setGrowlightStatus(newStatus);
+      
+      // Nampilin notifikasi toast
+      if (newStatus) {
+        showToast.success("Growlight dihidupkan");
+      } else {
+        showToast.warning("Growlight dimatikan");
+      }
+
+      // Update DB di firestore
+      await updateGrowlightStatus(currentDocId, newStatus);
+      console.log("Status growlight berhasil diperbarui:", newStatus);
+    } catch (error) {
+      console.error("Error mengubah status growlight:", error);
+      setConnectionError(`Error mengubah status: ${error.message}`);
+      setGrowlightStatus(!event.target.checked); 
+      showToast.error(`Error: ${error.message}`);
+    }
+  };
+
+  // Fungsi untuk popup edit pertumbuhan tanaman
+  const openEditModal = () => {
+    const currentGrowth = data.pertumbuhan !== undefined && data.pertumbuhan !== null 
+      ? data.pertumbuhan 
+      : 0;
+    
+    setEditValue(String(currentGrowth));
+    setShowModal(true);
+  };
+
+  const handleEditChange = (e) => {
+    setEditValue(e.target.value);
+  };
+
+  const handleSaveGrowth = async () => {
+    try {
+      if (!currentDocId) {
+        setConnectionError("Tidak dapat mengubah data, ID dokumen tidak tersedia.");
+        return;
+      }
+
+      // Konversi ke number
+      const numericValue = parseFloat(editValue);
+      
+      // Validasi nilai
+      if (isNaN(numericValue)) {
+        setConnectionError("Nilai harus berupa angka.");
+        showToast.error("Nilai harus berupa angka");
+        return;
+      }
+
+      // Update DB di Firestore
+      await updateGrowthValue(currentDocId, numericValue);
+      console.log("Nilai pertumbuhan berhasil diperbarui:", numericValue);
+      
+      // Notifikasi sukses
+      showToast.success(`Ukuran tanaman diperbarui: ${numericValue} cm`);
+
+      // Tutup popup
+      setShowModal(false);
+    } catch (error) {
+      console.error("Error mengubah nilai pertumbuhan:", error);
+      setConnectionError(`Error mengubah data: ${error.message}`);
+      showToast.error(`Error: ${error.message}`);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-[#f6f6f6] flex flex-col items-center w-full overflow-hidden">
+      <div className="w-full">
+        <img
+          src="/dashboard_image.png"
+          alt="Ilustrasi Hidroponik"
+          className="w-full h-auto object-cover"
+          draggable={false}
+        />
+      </div>
+
+      {/* Main Container */}
+      <div className="w-full bg-white rounded-t-[32px] -mt-6 h-auto overflow-hidden">
+        {/* Connection Error Banner */}
+        {connectionError && (
+          <ErrorBanner 
+            message={connectionError} 
+            onRetry={() => window.location.reload()} 
+          />
+        )}
+
+        {/* Card Status */}
+        <div className="w-full px-5 sm:px-7 pt-7 pb-8 space-y-4">
+          {/* 1. Status Cahaya */}
+          <StatusCard 
+            bgColor="bg-[#FFA75C]"
+            icon={<SunIcon className="h-8 w-8 text-white" />}
+            title="Cahaya"
+            value={statusCahaya}
+          />
+
+          {/* 2. Status Growlight*/}
+          <StatusCard 
+            bgColor="bg-[#B5ABF8]"
+            icon={<LightBulbIcon className="h-8 w-8 text-white" />}
+            title="Growlight"
+            value={growlightStatus ? "ON" : "OFF"}
+            hasSwitch={true}
+            switchChecked={growlightStatus}
+            onSwitchChange={toggleGrowlight}
+            isLoading={isLoading}
+          />
+
+          {/* 3. Status Ketinggian Air */}
+          <StatusCard 
+            bgColor="bg-[#597D94]"
+            icon={<BeakerIcon className="h-8 w-8 text-white" />}
+            title="Ketinggian Air"
+            value={data.tinggi_air !== undefined && !isNaN(data.tinggi_air)
+              ? `${data.tinggi_air} cm`
+              : isLoading
+              ? "Memuat..."
+              : "Data tidak tersedia"}
+          />
+
+          {/* 4. Status Peristaltic*/}
+          <StatusCard 
+            bgColor="bg-[#5EA3D0]"
+            icon={<FontAwesomeIcon icon={faWater} className="h-8 w-8 text-white" />}
+            title="Pipa Peristaltik"
+            value={peristalticStatus ? "ON" : "OFF"}
+          />
+
+          {/* 5. Status Pertumbuhan Tanaman*/}
+          <StatusCard 
+            bgColor="bg-[#B5E29B]"
+            icon={<FontAwesomeIcon icon={faSeedling} className="h-8 w-8 text-white" />}
+            title="Pertumbuhan Tanaman"
+            value={`Ukuran Tanaman: ${data.pertumbuhan !== undefined && data.pertumbuhan !== null 
+              ? data.pertumbuhan 
+              : 0} cm`}
+            hasEditButton={true}
+            onEditClick={openEditModal}
+            isLoading={isLoading}
+          />
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+
+        <EditPopup 
+          show={showModal}
+          value={editValue}
+          onChange={handleEditChange}
+          onClose={() => setShowModal(false)}
+          onSave={handleSaveGrowth}
+          title="Edit Ukuran Tanaman"
+          fieldLabel="Ukuran Tanaman (cm)"
+        />
+        
+        <ToastNotification />
+      </div>
     </div>
   );
 }
