@@ -19,13 +19,14 @@ export default function Home() {
     lux: 0,
     tinggi_air: 0,
     pertumbuhan: 0,
+    suhu_air: 0,  // Menambahkan suhu air
   });
   const [connectionError, setConnectionError] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [currentDocId, setCurrentDocId] = useState("");
   const [growlightStatus, setGrowlightStatus] = useState(false);
   const [peristalticStatus, setPeristalticStatus] = useState(false);
-  
+
   // State untuk popup edit pertumbuhan
   const [showModal, setShowModal] = useState(false);
   const [editValue, setEditValue] = useState('');
@@ -38,47 +39,18 @@ export default function Home() {
       return;
     }
 
-    // Buat listener
+    // Listener Firebase
     const unsubscribe = getLatestStatus(
       (docId, latestData) => {
         console.log("Data terbaru diterima:", latestData);
-        
-        if (latestData.pertumbuhan === undefined || latestData.pertumbuhan === null) {
-          latestData.pertumbuhan = 0;
-        }
+
+        // Pastikan suhu_air tidak undefined atau null
+        latestData.suhu_air = latestData.suhu_air !== undefined ? latestData.suhu_air : 0;
         
         setCurrentDocId(docId);
         setData(latestData);
         setConnectionError(null);
-        
-        // Untuk nentuin status growlight berdasarkan lux
-        if (typeof latestData.lux === "number") {
-          const shouldBeOn = latestData.lux < 6000;
-          const manualOverride = latestData.manual_growlight;
-          
-          // Untuk switch manual
-          if (manualOverride !== undefined) {
-            setGrowlightStatus(manualOverride);
-          } else {
-            setGrowlightStatus(shouldBeOn);
-          }
-        }
-        
-        // Cek ketinggian air
-        if (typeof latestData.tinggi_air === "number") {
-          const shouldActivatePeristaltic = latestData.tinggi_air < 8;
-          
-          // Jika status peristaltic berubah, tampilkan notifikasi toastify
-          if (shouldActivatePeristaltic !== peristalticStatus) {
-            if (shouldActivatePeristaltic) {
-              showToast.info("Pipa peristaltik dihidupkan karena ketinggian air kurang dari 8 cm");
-            } else {
-              showToast.info("Pipa peristaltik dimatikan");
-            }
-            setPeristalticStatus(shouldActivatePeristaltic);
-          }
-        }
-        
+
         setIsLoading(false);
       },
       (error) => {
@@ -92,7 +64,7 @@ export default function Home() {
       console.log("Unsubscribing from Firestore listener");
       unsubscribe();
     };
-  }, []); 
+  }, []);
 
   // Logika status cahaya
   let statusCahaya = isLoading ? "Memuat..." : "Data tidak tersedia";
@@ -116,7 +88,7 @@ export default function Home() {
       const newStatus = event.target.checked;
 
       setGrowlightStatus(newStatus);
-      
+
       // Nampilin notifikasi toast
       if (newStatus) {
         showToast.success("Growlight dihidupkan");
@@ -156,24 +128,17 @@ export default function Home() {
         return;
       }
 
-      // Konversi ke number
       const numericValue = parseFloat(editValue);
       
-      // Validasi nilai
       if (isNaN(numericValue)) {
         setConnectionError("Nilai harus berupa angka.");
         showToast.error("Nilai harus berupa angka");
         return;
       }
 
-      // Update DB di Firestore
       await updateGrowthValue(currentDocId, numericValue);
-      console.log("Nilai pertumbuhan berhasil diperbarui:", numericValue);
-      
-      // Notifikasi sukses
       showToast.success(`Ukuran tanaman diperbarui: ${numericValue} cm`);
 
-      // Tutup popup
       setShowModal(false);
     } catch (error) {
       console.error("Error mengubah nilai pertumbuhan:", error);
@@ -193,9 +158,7 @@ export default function Home() {
         />
       </div>
 
-      {/* Main Container */}
       <div className="w-full bg-white rounded-t-[32px] -mt-6 h-auto overflow-hidden">
-        {/* Connection Error Banner */}
         {connectionError && (
           <ErrorBanner 
             message={connectionError} 
@@ -203,9 +166,7 @@ export default function Home() {
           />
         )}
 
-        {/* Card Status */}
         <div className="w-full px-5 sm:px-7 pt-7 pb-8 space-y-4">
-          {/* 1. Status Cahaya */}
           <StatusCard 
             bgColor="bg-[#FFA75C]"
             icon={<SunIcon className="h-8 w-8 text-white" />}
@@ -213,7 +174,6 @@ export default function Home() {
             value={statusCahaya}
           />
 
-          {/* 2. Status Growlight*/}
           <StatusCard 
             bgColor="bg-[#B5ABF8]"
             icon={<LightBulbIcon className="h-8 w-8 text-white" />}
@@ -225,7 +185,18 @@ export default function Home() {
             isLoading={isLoading}
           />
 
-          {/* 3. Status Ketinggian Air */}
+          <StatusCard
+            bgColor="bg-[#59C9D9]"
+            icon={<FontAwesomeIcon icon={faWater} className="h-8 w-8 text-white" />}
+            title="Suhu Air"
+            value={data.suhu_air !== undefined && !isNaN(data.suhu_air) 
+              ? `${data.suhu_air}°C` 
+              : isLoading
+              ? "Memuat..." 
+              : "Data tidak tersedia"}
+            isLoading={isLoading}
+          />
+
           <StatusCard 
             bgColor="bg-[#597D94]"
             icon={<BeakerIcon className="h-8 w-8 text-white" />}
@@ -237,7 +208,6 @@ export default function Home() {
               : "Data tidak tersedia"}
           />
 
-          {/* 4. Status Peristaltic*/}
           <StatusCard 
             bgColor="bg-[#5EA3D0]"
             icon={<FontAwesomeIcon icon={faWater} className="h-8 w-8 text-white" />}
@@ -245,7 +215,6 @@ export default function Home() {
             value={peristalticStatus ? "ON" : "OFF"}
           />
 
-          {/* 5. Status Pertumbuhan Tanaman*/}
           <StatusCard 
             bgColor="bg-[#B5E29B]"
             icon={<FontAwesomeIcon icon={faSeedling} className="h-8 w-8 text-white" />}
