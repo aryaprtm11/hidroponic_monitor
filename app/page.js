@@ -10,26 +10,25 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faSeedling, faWater } from "@fortawesome/free-solid-svg-icons";
 import StatusCard from "./component/card";
 import ErrorBanner from "./component/ErrorBanner";
-import EditPopup from "./component/EditPopup";
 import ToastNotification, { showToast } from "./component/ToastNotification";
-import { getLatestStatus, updateGrowlightStatus, updateGrowthValue } from "./component/firebaseService";
+import { getLatestStatus, updateGrowlightStatus } from "./component/firebaseService";
 
 export default function Home() {
-  const [data, setData] = useState({
-    lux: 0,
-    tinggi_air: 0,
-    pertumbuhan: 0,
-    suhu_air: 0,  // Menambahkan suhu air
+  const [sensorData, setSensorData] = useState({
+    cahaya: 0,
+    growlightOn: false,
+    levelAir: 0,
+    levelAirCm: 0,
+    pompaOn: false,
+    suhu: 0
   });
+
+  const [kontrolData, setKontrolData] = useState({
+    growlight: true
+  });
+
   const [connectionError, setConnectionError] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [currentDocId, setCurrentDocId] = useState("");
-  const [growlightStatus, setGrowlightStatus] = useState(false);
-  const [peristalticStatus, setPeristalticStatus] = useState(false);
-
-  // State untuk popup edit pertumbuhan
-  const [showModal, setShowModal] = useState(false);
-  const [editValue, setEditValue] = useState('');
 
   useEffect(() => {
     // Cek wifi
@@ -41,16 +40,16 @@ export default function Home() {
 
     // Listener Firebase
     const unsubscribe = getLatestStatus(
-      (docId, latestData) => {
-        console.log("Data terbaru diterima:", latestData);
+      (type, latestData) => {
+        console.log(`Data ${type} terbaru diterima:`, latestData);
 
-        // Pastikan suhu_air tidak undefined atau null
-        latestData.suhu_air = latestData.suhu_air !== undefined ? latestData.suhu_air : 0;
-        
-        setCurrentDocId(docId);
-        setData(latestData);
+        if (type === "sensor") {
+          setSensorData(latestData);
+        } else if (type === "kontrol") {
+          setKontrolData(latestData);
+        }
+
         setConnectionError(null);
-
         setIsLoading(false);
       },
       (error) => {
@@ -61,7 +60,7 @@ export default function Home() {
     );
 
     return () => {
-      console.log("Unsubscribing from Firestore listener");
+      console.log("Unsubscribing from Firebase listener");
       unsubscribe();
     };
   }, []);
@@ -69,8 +68,8 @@ export default function Home() {
   // Logika status cahaya
   let statusCahaya = isLoading ? "Memuat..." : "Data tidak tersedia";
 
-  if (typeof data.lux === "number") {
-    if (data.lux < 6000) {
+  if (typeof sensorData.cahaya === "number") {
+    if (sensorData.cahaya < 6000) {
       statusCahaya = "Cahaya Matahari Tidak Mencukupi";
     } else {
       statusCahaya = "Cahaya Matahari Cukup";
@@ -80,14 +79,13 @@ export default function Home() {
   // Fungsi untuk toggle status growlight
   const toggleGrowlight = async (event) => {
     try {
-      if (!currentDocId) {
-        setConnectionError("Tidak dapat mengubah status, ID dokumen tidak tersedia.");
-        return;
-      }
-
       const newStatus = event.target.checked;
-
-      setGrowlightStatus(newStatus);
+      
+      // Update state lokal
+      setKontrolData(prev => ({
+        ...prev,
+        growlight: newStatus
+      }));
 
       // Nampilin notifikasi toast
       if (newStatus) {
@@ -96,53 +94,16 @@ export default function Home() {
         showToast.warning("Growlight dimatikan");
       }
 
-      // Update DB di firestore
-      await updateGrowlightStatus(currentDocId, newStatus);
+      // Update DB di Firebase
+      await updateGrowlightStatus(newStatus);
       console.log("Status growlight berhasil diperbarui:", newStatus);
     } catch (error) {
       console.error("Error mengubah status growlight:", error);
       setConnectionError(`Error mengubah status: ${error.message}`);
-      setGrowlightStatus(!event.target.checked); 
-      showToast.error(`Error: ${error.message}`);
-    }
-  };
-
-  // Fungsi untuk popup edit pertumbuhan tanaman
-  const openEditModal = () => {
-    const currentGrowth = data.pertumbuhan !== undefined && data.pertumbuhan !== null 
-      ? data.pertumbuhan 
-      : 0;
-    
-    setEditValue(String(currentGrowth));
-    setShowModal(true);
-  };
-
-  const handleEditChange = (e) => {
-    setEditValue(e.target.value);
-  };
-
-  const handleSaveGrowth = async () => {
-    try {
-      if (!currentDocId) {
-        setConnectionError("Tidak dapat mengubah data, ID dokumen tidak tersedia.");
-        return;
-      }
-
-      const numericValue = parseFloat(editValue);
-      
-      if (isNaN(numericValue)) {
-        setConnectionError("Nilai harus berupa angka.");
-        showToast.error("Nilai harus berupa angka");
-        return;
-      }
-
-      await updateGrowthValue(currentDocId, numericValue);
-      showToast.success(`Ukuran tanaman diperbarui: ${numericValue} cm`);
-
-      setShowModal(false);
-    } catch (error) {
-      console.error("Error mengubah nilai pertumbuhan:", error);
-      setConnectionError(`Error mengubah data: ${error.message}`);
+      setKontrolData(prev => ({
+        ...prev,
+        growlight: !event.target.checked
+      }));
       showToast.error(`Error: ${error.message}`);
     }
   };
@@ -178,9 +139,9 @@ export default function Home() {
             bgColor="bg-[#B5ABF8]"
             icon={<LightBulbIcon className="h-8 w-8 text-white" />}
             title="Growlight"
-            value={growlightStatus ? "ON" : "OFF"}
+            value={sensorData.growlightOn ? "ON" : "OFF"}
             hasSwitch={true}
-            switchChecked={growlightStatus}
+            switchChecked={kontrolData.growlight}
             onSwitchChange={toggleGrowlight}
             isLoading={isLoading}
           />
@@ -189,8 +150,8 @@ export default function Home() {
             bgColor="bg-[#59C9D9]"
             icon={<FontAwesomeIcon icon={faWater} className="h-8 w-8 text-white" />}
             title="Suhu Air"
-            value={data.suhu_air !== undefined && !isNaN(data.suhu_air) 
-              ? `${data.suhu_air}°C` 
+            value={sensorData.suhu !== undefined && !isNaN(sensorData.suhu) 
+              ? `${sensorData.suhu}°C` 
               : isLoading
               ? "Memuat..." 
               : "Data tidak tersedia"}
@@ -201,8 +162,8 @@ export default function Home() {
             bgColor="bg-[#597D94]"
             icon={<BeakerIcon className="h-8 w-8 text-white" />}
             title="Ketinggian Air"
-            value={data.tinggi_air !== undefined && !isNaN(data.tinggi_air)
-              ? `${data.tinggi_air} cm`
+            value={sensorData.levelAirCm !== undefined && !isNaN(sensorData.levelAirCm)
+              ? `${sensorData.levelAirCm} cm`
               : isLoading
               ? "Memuat..."
               : "Data tidak tersedia"}
@@ -212,31 +173,9 @@ export default function Home() {
             bgColor="bg-[#5EA3D0]"
             icon={<FontAwesomeIcon icon={faWater} className="h-8 w-8 text-white" />}
             title="Pipa Peristaltik"
-            value={peristalticStatus ? "ON" : "OFF"}
-          />
-
-          <StatusCard 
-            bgColor="bg-[#B5E29B]"
-            icon={<FontAwesomeIcon icon={faSeedling} className="h-8 w-8 text-white" />}
-            title="Pertumbuhan Tanaman"
-            value={`Ukuran Tanaman: ${data.pertumbuhan !== undefined && data.pertumbuhan !== null 
-              ? data.pertumbuhan 
-              : 0} cm`}
-            hasEditButton={true}
-            onEditClick={openEditModal}
-            isLoading={isLoading}
+            value={sensorData.pompaOn ? "ON" : "OFF"}
           />
         </div>
-
-        <EditPopup 
-          show={showModal}
-          value={editValue}
-          onChange={handleEditChange}
-          onClose={() => setShowModal(false)}
-          onSave={handleSaveGrowth}
-          title="Edit Ukuran Tanaman"
-          fieldLabel="Ukuran Tanaman (cm)"
-        />
         
         <ToastNotification />
       </div>
