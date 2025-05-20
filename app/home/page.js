@@ -4,6 +4,13 @@ import { useState, useEffect } from "react";
 import { Transition } from "@headlessui/react";
 import { getLatestStatus, updateGrowlightStatus } from "../component/firebaseService";
 
+// Import komponen
+import Header from "../component/Header";
+import LoadingScreen from "../component/LoadingScreen";
+import MonitoringCard from "../component/MonitoringCard";
+import ControlToggle from "../component/ControlToggle";
+import StatusAlert from "../component/StatusAlert";
+
 export default function Home() {
   const [sensorData, setSensorData] = useState({
     cahaya: 0,
@@ -22,6 +29,45 @@ export default function Home() {
   // State untuk loading screen
   const [loading, setLoading] = useState(true);
   const [progress, setProgress] = useState(0);
+  // State untuk waktu saat ini
+  const [currentTime, setCurrentTime] = useState('');
+  // State untuk status dan waktu perubahan terakhir
+  const [statusList, setStatusList] = useState([
+    {
+      id: Date.now(),
+      title: "Selamat Datang",
+      message: "Sistem monitoring hidroponik aktif",
+      time: new Date().toLocaleTimeString('id-ID', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      })
+    }
+  ]);
+
+  // Effect untuk update waktu secara real-time
+  useEffect(() => {
+    // Fungsi untuk mengupdate waktu
+    const updateTime = () => {
+      const now = new Date();
+      const timeString = now.toLocaleTimeString('id-ID', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      });
+      setCurrentTime(timeString);
+    };
+
+    // Update waktu pertama kali
+    updateTime();
+
+    // Set interval untuk update waktu setiap detik
+    const timeInterval = setInterval(updateTime, 1000);
+
+    // Cleanup interval saat komponen unmount
+    return () => clearInterval(timeInterval);
+  }, []);
 
   // Effect untuk loading screen
   useEffect(() => {
@@ -55,6 +101,18 @@ export default function Home() {
       (type, latestData) => {
         if (type === "sensor") {
           setSensorData(latestData);
+          
+          // Check jika cahaya berubah signifikan
+          if (latestData.cahaya < 500 && !kontrolData.growlight) {
+            handleStatusChange("Cahaya Kurang", "Growlight Dihidupkan");
+          } else if (latestData.cahaya > 1000 && kontrolData.growlight) {
+            handleStatusChange("Cahaya Cukup", "Growlight Dinonaktifkan");
+          }
+          
+          // Check jika level air berubah signifikan
+          if (latestData.levelAirCm < 5) {
+            handleStatusChange("Level Air Rendah", "Perlu Pengisian Air");
+          }
         } else if (type === "kontrol") {
           setKontrolData(latestData);
         }
@@ -65,7 +123,33 @@ export default function Home() {
     );
 
     return () => unsubscribe();
-  }, []);
+  }, [kontrolData.growlight]);
+
+  // Fungsi untuk update status dengan waktu perubahan
+  const handleStatusChange = (title, message) => {
+    const statusTime = new Date().toLocaleTimeString('id-ID', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    });
+    
+    // Buat status baru
+    const newStatus = {
+      id: Date.now(), // Unique ID berdasarkan timestamp
+      title,
+      message,
+      time: statusTime
+    };
+    
+    // Update list status (maksimal 3 item, hapus yang paling lama)
+    setStatusList(prevList => {
+      const newList = [newStatus, ...prevList];
+      if (newList.length > 3) {
+        return newList.slice(0, 3);
+      }
+      return newList;
+    });
+  };
 
   const toggleGrowlight = async (newStatus) => {
     try {
@@ -73,6 +157,13 @@ export default function Home() {
         ...prev,
         growlight: newStatus
       }));
+      
+      // Update status saat growlight diubah
+      handleStatusChange(
+        newStatus ? "Growlight Diaktifkan" : "Growlight Dinonaktifkan", 
+        newStatus ? "Lampu menyala" : "Lampu dimatikan"
+      );
+      
       await updateGrowlightStatus(newStatus);
     } catch (error) {
       console.error("Error:", error);
@@ -90,45 +181,20 @@ export default function Home() {
         ...prev,
         pompaOn: newStatus
       }));
+      
+      // Update status saat pompa diubah
+      handleStatusChange(
+        newStatus ? "Pompa Diaktifkan" : "Pompa Dinonaktifkan",
+        newStatus ? "Pompa menyala" : "Pompa dimatikan"
+      );
     } catch (error) {
       console.error("Error:", error);
     }
   };
 
-  const currentTime = new Date().toLocaleTimeString('id-ID', {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false
-  });
-
   // Render loading screen jika masih loading
   if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-white">
-        <div className="flex flex-col items-center space-y-6">
-          <img 
-            src="/icon/mdi_leaf.png" 
-            alt="Logo" 
-            className="w-20 h-20 animate-bounce"
-          />
-          <h1 className="text-xl font-medium text-[#46AE5F]">
-            Hidroponic Monitoring
-          </h1>
-          
-          <div className="w-64 h-2 bg-gray-200 rounded-full overflow-hidden">
-            <div 
-              className="h-full bg-[#46AE5F] rounded-full transition-all duration-300 ease-out"
-              style={{ width: `${progress}%` }}
-            />
-          </div>
-          
-          <p className="text-sm text-gray-500">
-            Loading... {Math.floor(progress)}%
-          </p>
-        </div>
-      </div>
-    );
+    return <LoadingScreen progress={progress} />;
   }
 
   return (
@@ -140,96 +206,61 @@ export default function Home() {
     >
       <div className="min-h-screen bg-[#f6f6f6] p-4">
         {/* Header */}
-        <div className="bg-white rounded-xl shadow-sm p-4 mb-6 flex items-center justify-center">
-          <img src="/icon/mdi_leaf.png" alt="Logo" className="w-6 h-6 mr-2" />
-          <h1 className="text-[#46AE5F] font-medium">Hidroponic Monitoring</h1>
-        </div>
+        <Header />
 
         {/* Main Container */}
         <div className="bg-white rounded-3xl p-5 shadow-sm mb-6">
           {/* Monitoring Grid */}
           <div className="grid grid-cols-2 gap-6 mb-6">
             {/* Time */}
-            <div className="bg-[#f6f6f6] rounded-full p-6 flex flex-col items-center justify-center aspect-square">
-              <img src="/icon/icon-park-solid_time.png" alt="Time" className="w-8 h-8 mb-1" />
-              <p className="text-lg font-semibold text-[#102E50]">{currentTime}</p>
-            </div>
+            <MonitoringCard 
+              icon="/icon/icon-park-solid_time.png" 
+              value={currentTime}
+            />
 
             {/* Light */}
-            <div className="bg-[#f6f6f6] rounded-full p-6 flex flex-col items-center justify-center aspect-square">
-              <img src="/icon/flowbite_sun-solid.png" alt="Light" className="w-8 h-8 mb-1" />
-              <p className="text-lg font-semibold text-[#102E50]">{sensorData.cahaya || 0} Lux</p>
-            </div>
+            <MonitoringCard 
+              icon="/icon/flowbite_sun-solid.png" 
+              value={sensorData.cahaya || 0} 
+              unit="Lux"
+            />
 
             {/* Temperature */}
-            <div className="bg-[#f6f6f6] rounded-full p-6 flex flex-col items-center justify-center aspect-square">
-              <img src="/icon/ri_temp-cold-fill.png" alt="Temperature" className="w-8 h-8 mb-1" />
-              <p className="text-lg font-semibold text-[#102E50]">{sensorData.suhu || 0}° C</p>
-            </div>
+            <MonitoringCard 
+              icon="/icon/ri_temp-cold-fill.png" 
+              value={sensorData.suhu || 0} 
+              unit="° C"
+            />
 
             {/* Water Level */}
-            <div className="bg-[#f6f6f6] rounded-full p-6 flex flex-col items-center justify-center aspect-square">
-              <img src="/icon/icon-park-solid_water-level.png" alt="Water" className="w-8 h-8 mb-1" />
-              <p className="text-lg font-semibold text-[#102E50]">{sensorData.levelAirCm || 0} cm</p>
-            </div>
+            <MonitoringCard 
+              icon="/icon/icon-park-solid_water-level.png" 
+              value={sensorData.levelAirCm || 0} 
+              unit="cm"
+            />
           </div>
 
           {/* Growlight Control */}
-          <div className="bg-[#f6f6f6] rounded-xl p-4 mb-4 flex items-center justify-between">
-            <div className="flex items-center">
-              <img src="/icon/icon-park-solid_dome-light.png" alt="Growlight" className="w-8 h-8 mr-3" />
-              <div>
-                <p className="font-medium text-[#102E50]">Lampu Growlight</p>
-                <p className="text-sm text-[#102E50]">{kontrolData.growlight ? "Diaktifkan" : "Nonaktifkan"}</p>
-              </div>
-            </div>
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                checked={kontrolData.growlight}
-                onChange={(e) => toggleGrowlight(e.target.checked)}
-                className="sr-only peer"
-              />
-              <div className="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-400"></div>
-            </label>
+          <div className="mb-4">
+            <ControlToggle 
+              icon="/icon/icon-park-solid_dome-light.png"
+              title="Lampu Growlight"
+              isActive={kontrolData.growlight}
+              onToggle={toggleGrowlight}
+            />
           </div>
 
           {/* Pompa Control */}
-          <div className="bg-[#f6f6f6] rounded-xl p-4 flex items-center justify-between">
-            <div className="flex items-center">
-              <img src="/icon/mdi_pipe-valve.png" alt="Pump" className="w-8 h-8 mr-3" />
-              <div>
-                <p className="font-medium text-[#102E50]">Pompa Peristaltik</p>
-                <p className="text-sm text-[#102E50]">{sensorData.pompaOn ? "Diaktifkan" : "Nonaktifkan"}</p>
-              </div>
-            </div>
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                checked={sensorData.pompaOn}
-                onChange={(e) => togglePompa(e.target.checked)}
-                className="sr-only peer"
-              />
-              <div className="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-400"></div>
-            </label>
-          </div>
+          <ControlToggle 
+            icon="/icon/mdi_pipe-valve.png"
+            title="Pompa Peristaltik"
+            isActive={sensorData.pompaOn}
+            onToggle={togglePompa}
+          />
         </div>
 
         {/* Status Section */}
-        <div>
-          <h2 className="text-lg font-semibold mb-3 text-[#102E50]">Status</h2>
-          <div className="bg-white rounded-xl p-4 shadow-sm flex items-center">
-            <img src="/icon/solar_bell-bold-duotone.png" alt="Alert" className="w-10 h-10 mr-4" />
-            <div>
-              <p className="font-medium text-[#102E50]">Cahaya Kurang</p>
-              <p className="font-medium text-[#102E50]">Growlight Dihidupkan</p>
-              <div className="flex items-center text-sm text-[#102E50] mt-1">
-                <img src="/icon/icon-park-solid_time.png" alt="Time" className="w-4 h-4 mr-1" />
-                <span>12.00</span>
-              </div>
-            </div>
-          </div>
-        </div>
+        <StatusAlert statusList={statusList} />
       </div>
     </Transition>
   );
