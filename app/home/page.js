@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Transition } from "@headlessui/react";
-import { getLatestStatus } from "../component/firebaseService";
+import { getLatestStatus, updateGrowlightStatus } from "../component/firebaseService";
 
 // Import komponen
 import Header from "../component/Header";
@@ -103,10 +103,22 @@ export default function Home() {
           setSensorData(latestData);
           
           // Check jika cahaya berubah signifikan
-          if (latestData.cahaya < 500 && !kontrolData.growlight) {
+          if (latestData.cahaya < 2400 && !kontrolData.growlight) {
             handleStatusChange("Cahaya Kurang", "Growlight Dihidupkan");
-          } else if (latestData.cahaya > 1000 && kontrolData.growlight) {
+            // Otomatis aktifkan growlight
+            updateGrowlightStatus(true);
+            setKontrolData(prev => ({
+              ...prev,
+              growlight: true
+            }));
+          } else if (latestData.cahaya > 2400 && kontrolData.growlight) {
             handleStatusChange("Cahaya Cukup", "Growlight Dinonaktifkan");
+            // Otomatis nonaktifkan growlight
+            updateGrowlightStatus(false);
+            setKontrolData(prev => ({
+              ...prev,
+              growlight: false
+            }));
           }
           
           // Check jika level air berubah signifikan
@@ -175,13 +187,15 @@ export default function Home() {
             <MonitoringCard 
               icon="/icon/icon-park-solid_time.png" 
               value={currentTime}
+              className="animate-fadeIn animation-delay-100"
             />
 
             {/* Light */}
             <MonitoringCard 
               icon="/icon/flowbite_sun-solid.png" 
-              value={sensorData.cahaya || 0} 
+              value={Math.round(sensorData.cahaya) || 0} 
               unit="Lux"
+              className="animate-fadeIn animation-delay-200"
             />
 
             {/* Temperature */}
@@ -189,6 +203,7 @@ export default function Home() {
               icon="/icon/ri_temp-cold-fill.png" 
               value={Math.round(sensorData.suhu) || 0} 
               unit="° C"
+              className="animate-fadeIn animation-delay-300"
             />
 
             {/* Water Level */}
@@ -196,11 +211,12 @@ export default function Home() {
               icon="/icon/icon-park-solid_water-level.png" 
               value={sensorData.levelAirCm || 0} 
               unit="cm"
+              className="animate-fadeIn animation-delay-400"
             />
           </div>
 
           {/* Growlight Control */}
-          <div className="mb-4">
+          <div className="mb-4 animate-slideUp animation-delay-500">
             <ControlToggle 
               icon="/icon/icon-park-solid_dome-light.png"
               title="Lampu Growlight"
@@ -209,15 +225,19 @@ export default function Home() {
           </div>
 
           {/* Pompa Control */}
-          <ControlToggle 
-            icon="/icon/mdi_pipe-valve.png"
-            title="Pompa Peristaltik"
-            isActive={sensorData.pompaOn}
-          />
+          <div className="animate-slideUp animation-delay-600">
+            <ControlToggle 
+              icon="/icon/mdi_pipe-valve.png"
+              title="Pompa Peristaltik"
+              isActive={sensorData.pompaOn}
+            />
+          </div>
         </div>
 
         {/* Status Section */}
-        <StatusAlert statusList={statusList} />
+        <div className="animate-fadeIn animation-delay-700">
+          <StatusAlert statusList={statusList} />
+        </div>
       </div>
     </Transition>
   );
