@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Transition } from "@headlessui/react";
-import { getLatestStatus, updateGrowlightStatus } from "../component/firebaseService";
+import { getLatestStatus } from "../component/firebaseService";
 
 // Import komponen
 import Header from "../component/Header";
@@ -151,47 +151,6 @@ export default function Home() {
     });
   };
 
-  const toggleGrowlight = async (newStatus) => {
-    try {
-      setKontrolData(prev => ({
-        ...prev,
-        growlight: newStatus
-      }));
-      
-      // Update status saat growlight diubah
-      handleStatusChange(
-        newStatus ? "Growlight Diaktifkan" : "Growlight Dinonaktifkan", 
-        newStatus ? "Lampu menyala" : "Lampu dimatikan"
-      );
-      
-      await updateGrowlightStatus(newStatus);
-    } catch (error) {
-      console.error("Error:", error);
-      setKontrolData(prev => ({
-        ...prev,
-        growlight: !newStatus
-      }));
-    }
-  };
-
-  const togglePompa = async (newStatus) => {
-    // Untuk contoh saja, implementasi sebenarnya perlu dibuat
-    try {
-      setSensorData(prev => ({
-        ...prev,
-        pompaOn: newStatus
-      }));
-      
-      // Update status saat pompa diubah
-      handleStatusChange(
-        newStatus ? "Pompa Diaktifkan" : "Pompa Dinonaktifkan",
-        newStatus ? "Pompa menyala" : "Pompa dimatikan"
-      );
-    } catch (error) {
-      console.error("Error:", error);
-    }
-  };
-
   // Render loading screen jika masih loading
   if (loading) {
     return <LoadingScreen progress={progress} />;
@@ -228,7 +187,7 @@ export default function Home() {
             {/* Temperature */}
             <MonitoringCard 
               icon="/icon/ri_temp-cold-fill.png" 
-              value={sensorData.suhu || 0} 
+              value={Math.round(sensorData.suhu) || 0} 
               unit="° C"
             />
 
@@ -246,7 +205,6 @@ export default function Home() {
               icon="/icon/icon-park-solid_dome-light.png"
               title="Lampu Growlight"
               isActive={kontrolData.growlight}
-              onToggle={toggleGrowlight}
             />
           </div>
 
@@ -255,7 +213,6 @@ export default function Home() {
             icon="/icon/mdi_pipe-valve.png"
             title="Pompa Peristaltik"
             isActive={sensorData.pompaOn}
-            onToggle={togglePompa}
           />
         </div>
 
