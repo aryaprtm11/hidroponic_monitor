@@ -75,7 +75,8 @@ export const initializeDefaultData = async () => {
                 levelAir: 0,
                 levelAirCm: 0,
                 pompaOn: false,
-                suhu: 0
+                suhu: 0,
+                durasiCahaya: 0
             };
             
             await set(sensorRef, initialSensorData);

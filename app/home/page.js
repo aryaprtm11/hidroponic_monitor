@@ -18,7 +18,8 @@ export default function Home() {
     levelAir: 0,
     levelAirCm: 0,
     pompaOn: false,
-    suhu: 0
+    suhu: 0,
+    durasiCahaya: 0
   });
 
   const [kontrolData, setKontrolData] = useState({
@@ -225,18 +226,28 @@ export default function Home() {
           </div>
 
           {/* Pompa Control */}
-          <div className="animate-slideUp animation-delay-600">
+          <div className="mb-4 animate-slideUp animation-delay-600">
             <ControlToggle 
               icon="/icon/mdi_pipe-valve.png"
               title="Pompa Peristaltik"
               isActive={sensorData.pompaOn}
             />
           </div>
+
+          {/* Durasi Cahaya */}
+          <div className="mb-4 animate-slideUp animation-delay-700">
+            <ControlToggle 
+              icon="/icon/flowbite_sun-solid.png"
+              title="Durasi Terkena Cahaya"
+              isActive={true}
+              subtitle={`${Math.floor(sensorData.durasiCahaya / 60)} jam`}
+            />
+          </div>
         </div>
 
         {/* Status Section */}
         <div className="animate-fadeIn animation-delay-700">
-          <StatusAlert statusList={statusList} />
+        <StatusAlert statusList={statusList} />
         </div>
       </div>
     </Transition>
